@@ -31,30 +31,33 @@ const checkSecret = (req, res, next) => {
   next();
 };
 
-// Proxy middleware options
+// Proxy — uses http-proxy-middleware v3 on:{} event handler syntax
 const ccProxy = createProxyMiddleware({
   target: 'https://api.checkoutchamp.com',
   changeOrigin: true,
-  pathRewrite: {},
-  onProxyReq: (proxyReq) => {
-    // Strip the relay secret before forwarding — CC must never see it
-    proxyReq.removeHeader('x-relay-secret');
+  on: {
+    proxyReq: (proxyReq) => {
+      // Strip relay secret — CC must never see it
+      proxyReq.removeHeader('x-relay-secret');
 
-    // CRITICAL: Strip forwarding headers injected by Traefik/NGINX.
-    // Without this, Checkout Champ reads X-Forwarded-For and sees the
-    // original client IP instead of this VPS's IP (150.230.35.80).
-    proxyReq.removeHeader('x-forwarded-for');
-    proxyReq.removeHeader('x-forwarded-host');
-    proxyReq.removeHeader('x-forwarded-proto');
-    proxyReq.removeHeader('x-real-ip');
+      // CRITICAL: Strip all forwarding headers injected by Traefik.
+      // Without this, CC reads X-Forwarded-For and sees the original
+      // client IP instead of this VPS IP (150.230.35.80).
+      proxyReq.removeHeader('x-forwarded-for');
+      proxyReq.removeHeader('x-forwarded-host');
+      proxyReq.removeHeader('x-forwarded-proto');
+      proxyReq.removeHeader('x-forwarded-server');
+      proxyReq.removeHeader('x-real-ip');
+      proxyReq.removeHeader('via');
+    },
+    proxyRes: (proxyRes, req) => {
+      proxyRes.headers['access-control-allow-origin'] = req.headers.origin || '*';
+    },
+    error: (err, req, res) => {
+      console.error('[relay] Proxy error:', err.message);
+      res.status(502).json({ error: 'Bad Gateway', details: err.message });
+    },
   },
-  onProxyRes: (proxyRes, req, res) => {
-    proxyRes.headers['Access-Control-Allow-Origin'] = req.headers.origin || '*';
-  },
-  onError: (err, req, res) => {
-    console.error('Proxy Error:', err);
-    res.status(500).json({ error: 'Proxy implementation error', details: err.message });
-  }
 });
 
 // Use proxy for all routes with secret guard
