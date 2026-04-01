@@ -39,6 +39,14 @@ const ccProxy = createProxyMiddleware({
   onProxyReq: (proxyReq) => {
     // Strip the relay secret before forwarding — CC must never see it
     proxyReq.removeHeader('x-relay-secret');
+
+    // CRITICAL: Strip forwarding headers injected by Traefik/NGINX.
+    // Without this, Checkout Champ reads X-Forwarded-For and sees the
+    // original client IP instead of this VPS's IP (150.230.35.80).
+    proxyReq.removeHeader('x-forwarded-for');
+    proxyReq.removeHeader('x-forwarded-host');
+    proxyReq.removeHeader('x-forwarded-proto');
+    proxyReq.removeHeader('x-real-ip');
   },
   onProxyRes: (proxyRes, req, res) => {
     proxyRes.headers['Access-Control-Allow-Origin'] = req.headers.origin || '*';
